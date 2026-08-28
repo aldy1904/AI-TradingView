@@ -1,0 +1,24 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "AI TradingView Analyzer V0.1 Analysis Schema",
+  "description": "Reserved contract for a future analysis engine. V0.1 does not produce or consume this payload.",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "version": {
+      "type": "string",
+      "const": "0.1"
+    },
+    "symbol": {
+      "type": "string"
+    },
+    "timeframe": {
+      "type": "string"
+    },
+    "analysis_status": {
+      "type": "string",
+      "enum": ["placeholder"]
+    }
+  },
+  "required": ["version", "analysis_status"]
+}

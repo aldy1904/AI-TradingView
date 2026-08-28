@@ -1,0 +1,80 @@
+//@version=6
+indicator("AI Trading Analyzer V0.1 — Manual Visualization", overlay = true, max_lines_count = 10, max_labels_count = 10)
+
+// V0.1 is a visualization-only proof of concept.
+// It does not generate orders, automate trading, call an API, or perform AI analysis.
+
+groupLevels = "Manual trade levels"
+direction = input.string("Long", "Direction", options = ["Long", "Short"], group = groupLevels)
+entryPrice = input.float(0.0, "Entry", step = 0.01, group = groupLevels)
+stopPrice = input.float(0.0, "Stop Loss", step = 0.01, group = groupLevels)
+showLabels = input.bool(true, "Show level labels", group = groupLevels)
+
+groupZones = "Manual zones"
+showSupply = input.bool(true, "Show supply zone", group = groupZones)
+supplyTop = input.float(0.0, "Supply top", step = 0.01, group = groupZones)
+supplyBottom = input.float(0.0, "Supply bottom", step = 0.01, group = groupZones)
+showDemand = input.bool(true, "Show demand zone", group = groupZones)
+demandTop = input.float(0.0, "Demand top", step = 0.01, group = groupZones)
+demandBottom = input.float(0.0, "Demand bottom", step = 0.01, group = groupZones)
+
+groupTrendline = "Manual trendline"
+showTrendline = input.bool(true, "Show trendline", group = groupTrendline)
+trendlineBarsBack = input.int(40, "Start bars back", minval = 1, group = groupTrendline)
+trendlineStartPrice = input.float(0.0, "Start price", step = 0.01, group = groupTrendline)
+trendlineEndPrice = input.float(0.0, "End price", step = 0.01, group = groupTrendline)
+
+groupAverages = "Moving averages"
+showEma50 = input.bool(true, "Show EMA 50", group = groupAverages)
+showEma200 = input.bool(true, "Show EMA 200", group = groupAverages)
+
+isLong = direction == "Long"
+hasLevels = entryPrice > 0 and stopPrice > 0 and entryPrice != stopPrice
+risk = math.abs(entryPrice - stopPrice)
+tp1Price = hasLevels ? entryPrice + (isLong ? 1 : -1) * risk * 1.5 : na
+tp2Price = hasLevels ? entryPrice + (isLong ? 1 : -1) * risk * 2.0 : na
+
+plot(hasLevels ? entryPrice : na, "Entry", color = color.new(color.blue, 0), linewidth = 2, style = plot.style_linebr)
+plot(hasLevels ? stopPrice : na, "Stop Loss", color = color.new(color.red, 0), linewidth = 2, style = plot.style_linebr)
+plot(tp1Price, "TP1 (RR 1:1.5)", color = color.new(color.green, 0), linewidth = 2, style = plot.style_linebr)
+plot(tp2Price, "TP2 (RR 1:2)", color = color.new(color.lime, 0), linewidth = 2, style = plot.style_linebr)
+
+supplyUpperPlot = plot(showSupply and supplyTop > 0 ? supplyTop : na, "Supply top", color = color.new(color.red, 40), style = plot.style_linebr)
+supplyLowerPlot = plot(showSupply and supplyBottom > 0 ? supplyBottom : na, "Supply bottom", color = color.new(color.red, 40), style = plot.style_linebr)
+fill(supplyUpperPlot, supplyLowerPlot, color = color.new(color.red, 88), title = "Supply zone")
+
+demandUpperPlot = plot(showDemand and demandTop > 0 ? demandTop : na, "Demand top", color = color.new(color.green, 40), style = plot.style_linebr)
+demandLowerPlot = plot(showDemand and demandBottom > 0 ? demandBottom : na, "Demand bottom", color = color.new(color.green, 40), style = plot.style_linebr)
+fill(demandUpperPlot, demandLowerPlot, color = color.new(color.green, 88), title = "Demand zone")
+
+ema50 = ta.ema(close, 50)
+ema200 = ta.ema(close, 200)
+plot(showEma50 ? ema50 : na, "EMA 50", color = color.orange, linewidth = 2)
+plot(showEma200 ? ema200 : na, "EMA 200", color = color.purple, linewidth = 2)
+
+var line manualTrendline = na
+var label entryLabel = na
+var label stopLabel = na
+var label tp1Label = na
+var label tp2Label = na
+
+if barstate.islast
+    if not na(manualTrendline)
+        line.delete(manualTrendline)
+    if showTrendline and trendlineStartPrice > 0 and trendlineEndPrice > 0 and bar_index >= trendlineBarsBack
+        manualTrendline := line.new(bar_index - trendlineBarsBack, trendlineStartPrice, bar_index, trendlineEndPrice, color = color.yellow, width = 2)
+
+    if not na(entryLabel)
+        label.delete(entryLabel)
+    if not na(stopLabel)
+        label.delete(stopLabel)
+    if not na(tp1Label)
+        label.delete(tp1Label)
+    if not na(tp2Label)
+        label.delete(tp2Label)
+
+    if showLabels and hasLevels
+        entryLabel := label.new(bar_index, entryPrice, "Entry", style = label.style_label_left, color = color.blue, textcolor = color.white)
+        stopLabel := label.new(bar_index, stopPrice, "Stop Loss", style = label.style_label_left, color = color.red, textcolor = color.white)
+        tp1Label := label.new(bar_index, tp1Price, "TP1 1:1.5", style = label.style_label_left, color = color.green, textcolor = color.white)
+        tp2Label := label.new(bar_index, tp2Price, "TP2 1:2", style = label.style_label_left, color = color.lime, textcolor = color.black)
