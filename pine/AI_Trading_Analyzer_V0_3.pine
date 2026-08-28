@@ -14,7 +14,9 @@ ema200Color = input.color(color.blue, "EMA 200 color", group = groupTrend)
 
 groupStructure = "2. Market structure"
 swingLength = input.int(5, "Swing confirmation bars", minval = 1, group = groupStructure)
-showSwingMarkers = input.bool(true, "Show confirmed swing markers", group = groupStructure)
+showSwingMarkers = input.bool(false, "Show confirmed swing markers", group = groupStructure)
+showStructureLine = input.bool(true, "Show latest BOS / CHoCH line", group = groupStructure)
+structureLabelOffsetAtr = input.float(0.15, "Structure text offset (ATR)", minval = 0.0, step = 0.05, group = groupStructure)
 showStructureLabel = input.bool(true, "Show BOS / CHoCH label", group = groupStructure)
 structureColor = input.color(color.yellow, "Structure label color", group = groupStructure)
 
@@ -34,6 +36,7 @@ labelTextColor = input.color(color.white, "Label text color", group = groupLabel
 
 ema50 = ta.ema(close, fastEmaLength)
 ema200 = ta.ema(close, slowEmaLength)
+structureAtr = ta.atr(14)
 bullTrend = ema50 > ema200
 bearTrend = ema50 < ema200
 
@@ -57,8 +60,8 @@ if not na(pivotLow)
     lastSwingLow := pivotLow
     lastSwingLowBar := bar_index - swingLength
 
-plotshape(showSwingMarkers and not na(pivotHigh), title = "Confirmed swing high", style = shape.triangledown, location = location.abovebar, color = color.red, size = size.tiny, offset = -swingLength)
-plotshape(showSwingMarkers and not na(pivotLow), title = "Confirmed swing low", style = shape.triangleup, location = location.belowbar, color = color.lime, size = size.tiny, offset = -swingLength)
+plotshape(showSwingMarkers and not na(pivotHigh), title = "Confirmed swing high (pivot only)", style = shape.triangledown, location = location.abovebar, color = color.red, size = size.tiny, offset = -swingLength)
+plotshape(showSwingMarkers and not na(pivotLow), title = "Confirmed swing low (pivot only)", style = shape.triangleup, location = location.belowbar, color = color.lime, size = size.tiny, offset = -swingLength)
 
 confirmedBar = barstate.isconfirmed
 bullBreak = confirmedBar and bar_index > 0 and not na(lastSwingHigh) and close > lastSwingHigh and close[1] <= lastSwingHigh
@@ -85,15 +88,32 @@ bullSetup = bullTrend and bullBreak and not na(lastSwingLow) and bullRisk >= min
 bearSetup = bearTrend and bearBreak and not na(lastSwingHigh) and bearRisk >= minimumRisk
 newSetup = bullSetup or bearSetup
 
+var line structureLine = na
+var label structureMarker = na
 var line entryLine = na
 var line stopLine = na
 var line tp1Line = na
 var line tp2Line = na
-var label setupLabel = na
 var label entryLabel = na
 var label stopLabel = na
 var label tp1Label = na
 var label tp2Label = na
+
+if bullBreak or bearBreak
+    if not na(structureLine)
+        line.delete(structureLine)
+    if not na(structureMarker)
+        label.delete(structureMarker)
+
+    brokenLevel = bullBreak ? lastSwingHigh : lastSwingLow
+    swingOriginBar = bullBreak ? lastSwingHighBar : lastSwingLowBar
+    structureName = bullBreak ? (bullChoch ? "CHoCH" : "BOS") : (bearChoch ? "CHoCH" : "BOS")
+    structureY = bullBreak ? brokenLevel + structureAtr * structureLabelOffsetAtr : brokenLevel - structureAtr * structureLabelOffsetAtr
+
+    if showStructureLine
+        structureLine := line.new(swingOriginBar, brokenLevel, bar_index, brokenLevel, xloc = xloc.bar_index, color = structureColor, style = line.style_dashed, width = 1)
+    if showStructureLabel
+        structureMarker := label.new(bar_index, structureY, structureName, style = label.style_none, textcolor = structureColor, size = size.tiny)
 
 if newSetup
     if not na(entryLine)
@@ -104,8 +124,6 @@ if newSetup
         line.delete(tp1Line)
     if not na(tp2Line)
         line.delete(tp2Line)
-    if not na(setupLabel)
-        label.delete(setupLabel)
     if not na(entryLabel)
         label.delete(entryLabel)
     if not na(stopLabel)
@@ -121,23 +139,17 @@ if newSetup
     activeTp1 = bullSetup ? activeEntry + activeRisk * 1.5 : activeEntry - activeRisk * 1.5
     activeTp2 = bullSetup ? activeEntry + activeRisk * 2.0 : activeEntry - activeRisk * 2.0
     setupEndBar = bar_index + levelDisplayBars
-    setupName = bullSetup ? (bullChoch ? "Bullish CHoCH" : "Bullish BOS") : (bearChoch ? "Bearish CHoCH" : "Bearish BOS")
-    setupY = bullSetup ? low : high
-
     if showTradeLevels
         entryLine := line.new(bar_index, activeEntry, setupEndBar, activeEntry, xloc = xloc.bar_index, color = entryColor, width = 2)
         stopLine := line.new(bar_index, activeStop, setupEndBar, activeStop, xloc = xloc.bar_index, color = stopColor, width = 2)
         tp1Line := line.new(bar_index, activeTp1, setupEndBar, activeTp1, xloc = xloc.bar_index, color = tp1Color, width = 2)
         tp2Line := line.new(bar_index, activeTp2, setupEndBar, activeTp2, xloc = xloc.bar_index, color = tp2Color, width = 2)
 
-    if showStructureLabel
-        setupLabel := label.new(bar_index, setupY, setupName, style = bullSetup ? label.style_label_up : label.style_label_down, color = structureColor, textcolor = color.black)
-
     if showLevelLabels
-        entryLabel := label.new(bar_index, activeEntry, "Entry", style = label.style_label_left, color = entryColor, textcolor = labelTextColor)
-        stopLabel := label.new(bar_index, activeStop, "SL", style = label.style_label_left, color = stopColor, textcolor = labelTextColor)
-        tp1Label := label.new(bar_index, activeTp1, "TP1 1:1.5", style = label.style_label_left, color = tp1Color, textcolor = color.black)
-        tp2Label := label.new(bar_index, activeTp2, "TP2 1:2", style = label.style_label_left, color = tp2Color, textcolor = color.black)
+        entryLabel := label.new(setupEndBar, activeEntry, "Entry", style = label.style_none, textcolor = entryColor, size = size.tiny)
+        stopLabel := label.new(setupEndBar, activeStop, "SL", style = label.style_none, textcolor = stopColor, size = size.tiny)
+        tp1Label := label.new(setupEndBar, activeTp1, "TP1 1:1.5", style = label.style_none, textcolor = tp1Color, size = size.tiny)
+        tp2Label := label.new(setupEndBar, activeTp2, "TP2 1:2", style = label.style_none, textcolor = tp2Color, size = size.tiny)
 
 // Setup logic uses confirmed pivots and confirmed-bar closes only.
 // No orders, strategy calls, alerts, HTTP requests, or external bridge are implemented.
