@@ -1,0 +1,132 @@
+//@version=6
+indicator("AI Trading Analyzer V0.2 — Setup Visualization", overlay = true, max_lines_count = 20, max_labels_count = 20, max_boxes_count = 10)
+
+// V0.2 is a manual TradingView visualization proof of concept.
+// It does not perform AI analysis, automated trading, order placement, or API communication.
+
+groupTrade = "1. Trade levels"
+direction = input.string("Long", "Direction", options = ["Long", "Short"], group = groupTrade)
+entryPrice = input.float(0.0, "Entry", step = 0.01, group = groupTrade)
+stopPrice = input.float(0.0, "Stop Loss", step = 0.01, group = groupTrade)
+setupAnchorBarsBack = input.int(15, "Setup anchor bars back", minval = 0, group = groupTrade)
+levelLengthBars = input.int(20, "Level length (bars)", minval = 1, group = groupTrade)
+showTradeLabels = input.bool(true, "Show trade labels", group = groupTrade)
+entryColor = input.color(color.white, "Entry color", group = groupTrade)
+stopColor = input.color(color.black, "Stop loss color", group = groupTrade)
+tp1Color = input.color(color.white, "TP1 color", group = groupTrade)
+tp2Color = input.color(color.black, "TP2 color", group = groupTrade)
+lightLabelTextColor = input.color(color.black, "Light level label text color", group = groupTrade)
+darkLabelTextColor = input.color(color.white, "Dark level label text color", group = groupTrade)
+
+groupSupply = "2. Supply zone"
+showSupply = input.bool(true, "Show supply zone", group = groupSupply)
+supplyTop = input.float(0.0, "Supply top", step = 0.01, group = groupSupply)
+supplyBottom = input.float(0.0, "Supply bottom", step = 0.01, group = groupSupply)
+supplyColor = input.color(color.black, "Supply border color", group = groupSupply)
+
+groupDemand = "3. Demand zone"
+showDemand = input.bool(true, "Show demand zone", group = groupDemand)
+demandTop = input.float(0.0, "Demand top", step = 0.01, group = groupDemand)
+demandBottom = input.float(0.0, "Demand bottom", step = 0.01, group = groupDemand)
+demandColor = input.color(color.white, "Demand border color", group = groupDemand)
+
+groupTrendline = "4. Trendline"
+showTrendline = input.bool(true, "Show trendline", group = groupTrendline)
+trendStartBarsBack = input.int(40, "Start bars back", minval = 1, group = groupTrendline)
+trendEndBarsBack = input.int(0, "End bars back", minval = 0, group = groupTrendline)
+trendStartPrice = input.float(0.0, "Start price", step = 0.01, group = groupTrendline)
+trendEndPrice = input.float(0.0, "End price", step = 0.01, group = groupTrendline)
+trendlineColor = input.color(color.white, "Trendline color", group = groupTrendline)
+
+groupEma = "5. EMA"
+showEma50 = input.bool(true, "Show EMA 50", group = groupEma)
+showEma200 = input.bool(true, "Show EMA 200", group = groupEma)
+ema50Color = input.color(color.white, "EMA 50 color", group = groupEma)
+ema200Color = input.color(color.black, "EMA 200 color", group = groupEma)
+
+groupAnalysis = "6. Analysis label"
+analysisLabel = input.string("Manual setup", "Setup label", group = groupAnalysis)
+showAnalysisLabel = input.bool(true, "Show setup label", group = groupAnalysis)
+
+isLong = direction == "Long"
+hasTrade = entryPrice > 0 and stopPrice > 0 and entryPrice != stopPrice
+risk = math.abs(entryPrice - stopPrice)
+tp1Price = hasTrade ? entryPrice + (isLong ? 1.0 : -1.0) * risk * 1.5 : na
+tp2Price = hasTrade ? entryPrice + (isLong ? 1.0 : -1.0) * risk * 2.0 : na
+
+setupStartBar = math.max(0, bar_index - setupAnchorBarsBack)
+setupEndBar = math.min(bar_index, setupStartBar + levelLengthBars)
+trendStartBar = math.max(0, bar_index - trendStartBarsBack)
+trendEndBar = math.max(0, bar_index - trendEndBarsBack)
+
+ema50 = ta.ema(close, 50)
+ema200 = ta.ema(close, 200)
+plot(showEma50 ? ema50 : na, "EMA 50", color = ema50Color, linewidth = 2)
+plot(showEma200 ? ema200 : na, "EMA 200", color = ema200Color, linewidth = 2)
+
+var line entryLine = na
+var line stopLine = na
+var line tp1Line = na
+var line tp2Line = na
+var line manualTrendline = na
+var box supplyZone = na
+var box demandZone = na
+var label entryLabel = na
+var label stopLabel = na
+var label tp1Label = na
+var label tp2Label = na
+var label setupLabel = na
+
+if barstate.islast
+    if not na(entryLine)
+        line.delete(entryLine)
+    if not na(stopLine)
+        line.delete(stopLine)
+    if not na(tp1Line)
+        line.delete(tp1Line)
+    if not na(tp2Line)
+        line.delete(tp2Line)
+    if not na(manualTrendline)
+        line.delete(manualTrendline)
+    if not na(supplyZone)
+        box.delete(supplyZone)
+    if not na(demandZone)
+        box.delete(demandZone)
+    if not na(entryLabel)
+        label.delete(entryLabel)
+    if not na(stopLabel)
+        label.delete(stopLabel)
+    if not na(tp1Label)
+        label.delete(tp1Label)
+    if not na(tp2Label)
+        label.delete(tp2Label)
+    if not na(setupLabel)
+        label.delete(setupLabel)
+
+    if hasTrade
+        entryLine := line.new(setupStartBar, entryPrice, setupEndBar, entryPrice, color = entryColor, width = 2)
+        stopLine := line.new(setupStartBar, stopPrice, setupEndBar, stopPrice, color = stopColor, width = 2)
+        tp1Line := line.new(setupStartBar, tp1Price, setupEndBar, tp1Price, color = tp1Color, width = 2)
+        tp2Line := line.new(setupStartBar, tp2Price, setupEndBar, tp2Price, color = tp2Color, width = 2)
+
+        if showTradeLabels
+            entryLabel := label.new(setupEndBar, entryPrice, "Entry", style = label.style_label_left, color = entryColor, textcolor = lightLabelTextColor)
+            stopLabel := label.new(setupEndBar, stopPrice, "Stop", style = label.style_label_left, color = stopColor, textcolor = darkLabelTextColor)
+            tp1Label := label.new(setupEndBar, tp1Price, "TP1 1:1.5", style = label.style_label_left, color = tp1Color, textcolor = lightLabelTextColor)
+            tp2Label := label.new(setupEndBar, tp2Price, "TP2 1:2", style = label.style_label_left, color = tp2Color, textcolor = darkLabelTextColor)
+
+    if showSupply and supplyTop > 0 and supplyBottom > 0
+        supplyZone := box.new(setupStartBar, supplyTop, setupEndBar, supplyBottom, border_color = supplyColor, bgcolor = color.new(supplyColor, 88))
+
+    if showDemand and demandTop > 0 and demandBottom > 0
+        demandZone := box.new(setupStartBar, demandTop, setupEndBar, demandBottom, border_color = demandColor, bgcolor = color.new(demandColor, 88))
+
+    if showTrendline and trendStartPrice > 0 and trendEndPrice > 0 and trendStartBar < trendEndBar
+        manualTrendline := line.new(trendStartBar, trendStartPrice, trendEndBar, trendEndPrice, color = trendlineColor, width = 2)
+
+    if showAnalysisLabel and analysisLabel != ""
+        setupLabel := label.new(setupStartBar, high, analysisLabel, style = label.style_label_down, color = color.new(color.black, 0), textcolor = color.white)
+
+// Future bridge mapping: symbol/timeframe identify the target chart; direction, entry, stop loss,
+// zones, trendline coordinates, and analysis labels map directly to the equivalent inputs above.
+// V0.2 remains manual until a separately designed bridge supplies those values.
