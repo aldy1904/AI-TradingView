@@ -1,0 +1,159 @@
+//@version=6
+indicator("AI Trading Analyzer V0.4 — Clean SMC Structure", overlay = true, max_lines_count = 6, max_labels_count = 6)
+
+// V0.4 is a visual indicator only. It contains no strategy, order execution, alerts, API bridge, or broker integration.
+
+groupTrend = "Trend Filter"
+fastEmaLength = input.int(50, "EMA 50 length", minval = 1, group = groupTrend)
+slowEmaLength = input.int(200, "EMA 200 length", minval = 2, group = groupTrend)
+showEma50 = input.bool(true, "Show EMA 50", group = groupTrend)
+showEma200 = input.bool(true, "Show EMA 200", group = groupTrend)
+
+groupStructure = "Market Structure"
+swingLength = input.int(5, "Swing confirmation bars", minval = 1, maxval = 20, group = groupStructure)
+structureLineMaxBars = input.int(25, "Maximum structure line bars", minval = 2, maxval = 100, group = groupStructure)
+requireTrendAlignment = input.bool(true, "Require EMA alignment for trade setup", group = groupStructure)
+
+groupTrade = "Trade Levels"
+stopBufferTicks = input.int(10, "Stop buffer (ticks)", minval = 0, group = groupTrade)
+minimumRiskTicks = input.int(20, "Minimum risk (ticks)", minval = 1, group = groupTrade)
+levelDisplayBars = input.int(12, "Trade level length (bars)", minval = 1, maxval = 30, group = groupTrade)
+showTradeLevels = input.bool(true, "Show latest Entry / SL / TP", group = groupTrade)
+
+groupVisual = "Visual"
+showStructure = input.bool(true, "Show latest BOS / CHoCH", group = groupVisual)
+showSwingMarkers = input.bool(false, "Show confirmed swing markers", group = groupVisual)
+showLevelLabels = input.bool(true, "Show trade level labels", group = groupVisual)
+structureTextOffsetTicks = input.int(30, "BOS / CHoCH text offset (ticks)", minval = 0, group = groupVisual)
+ema50Color = input.color(color.orange, "EMA 50 color", group = groupVisual)
+ema200Color = input.color(color.blue, "EMA 200 color", group = groupVisual)
+structureColor = input.color(color.yellow, "Structure color", group = groupVisual)
+entryColor = input.color(color.white, "Entry color", group = groupVisual)
+stopColor = input.color(color.red, "SL color", group = groupVisual)
+tp1Color = input.color(color.lime, "TP1 color", group = groupVisual)
+tp2Color = input.color(color.green, "TP2 color", group = groupVisual)
+
+ema50 = ta.ema(close, fastEmaLength)
+ema200 = ta.ema(close, slowEmaLength)
+bullTrend = ema50 > ema200
+bearTrend = ema50 < ema200
+
+plot(showEma50 ? ema50 : na, "EMA 50", color = ema50Color, linewidth = 2)
+plot(showEma200 ? ema200 : na, "EMA 200", color = ema200Color, linewidth = 2)
+
+pivotHigh = ta.pivothigh(high, swingLength, swingLength)
+pivotLow = ta.pivotlow(low, swingLength, swingLength)
+
+var float lastSwingHigh = na
+var float lastSwingLow = na
+var int lastSwingHighBar = na
+var int lastSwingLowBar = na
+var int structureBias = 0
+var int lastBullBrokenSwingBar = na
+var int lastBearBrokenSwingBar = na
+
+if not na(pivotHigh)
+    lastSwingHigh := pivotHigh
+    lastSwingHighBar := bar_index - swingLength
+
+if not na(pivotLow)
+    lastSwingLow := pivotLow
+    lastSwingLowBar := bar_index - swingLength
+
+// These markers identify confirmed pivots only; they are not BUY or SELL signals.
+plotshape(showSwingMarkers and not na(pivotHigh), title = "Confirmed swing high", style = shape.triangledown, location = location.abovebar, color = color.red, size = size.tiny, offset = -swingLength)
+plotshape(showSwingMarkers and not na(pivotLow), title = "Confirmed swing low", style = shape.triangleup, location = location.belowbar, color = color.lime, size = size.tiny, offset = -swingLength)
+
+confirmedBar = barstate.isconfirmed
+bullBreakRaw = confirmedBar and bar_index > 0 and not na(lastSwingHigh) and close > lastSwingHigh and close[1] <= lastSwingHigh
+bearBreakRaw = confirmedBar and bar_index > 0 and not na(lastSwingLow) and close < lastSwingLow and close[1] >= lastSwingLow
+bullBreak = bullBreakRaw and (na(lastBullBrokenSwingBar) or lastSwingHighBar != lastBullBrokenSwingBar)
+bearBreak = bearBreakRaw and (na(lastBearBrokenSwingBar) or lastSwingLowBar != lastBearBrokenSwingBar)
+
+bullChoch = bullBreak and structureBias == -1
+bearChoch = bearBreak and structureBias == 1
+
+if bullBreak
+    structureBias := 1
+    lastBullBrokenSwingBar := lastSwingHighBar
+else if bearBreak
+    structureBias := -1
+    lastBearBrokenSwingBar := lastSwingLowBar
+
+stopBuffer = stopBufferTicks * syminfo.mintick
+minimumRisk = minimumRiskTicks * syminfo.mintick
+
+bullEntry = lastSwingHigh
+bullStop = lastSwingLow - stopBuffer
+bullRisk = bullEntry - bullStop
+bearEntry = lastSwingLow
+bearStop = lastSwingHigh + stopBuffer
+bearRisk = bearStop - bearEntry
+
+bullSetup = bullBreak and not na(lastSwingLow) and bullRisk >= minimumRisk and (not requireTrendAlignment or bullTrend)
+bearSetup = bearBreak and not na(lastSwingHigh) and bearRisk >= minimumRisk and (not requireTrendAlignment or bearTrend)
+newSetup = bullSetup or bearSetup
+
+var line structureLine = na
+var label structureLabel = na
+var line entryLine = na
+var line stopLine = na
+var line tp1Line = na
+var line tp2Line = na
+var label entryLabel = na
+var label stopLabel = na
+var label tp1Label = na
+var label tp2Label = na
+
+if bullBreak or bearBreak
+    if not na(structureLine)
+        line.delete(structureLine)
+    if not na(structureLabel)
+        label.delete(structureLabel)
+
+    brokenLevel = bullBreak ? lastSwingHigh : lastSwingLow
+    originBar = bullBreak ? lastSwingHighBar : lastSwingLowBar
+    lineStartBar = math.max(originBar, bar_index - structureLineMaxBars)
+    structureText = bullBreak ? (bullChoch ? "CHoCH" : "BOS") : (bearChoch ? "CHoCH" : "BOS")
+    structureTextY = bullBreak ? brokenLevel + structureTextOffsetTicks * syminfo.mintick : brokenLevel - structureTextOffsetTicks * syminfo.mintick
+
+    if showStructure
+        structureLine := line.new(lineStartBar, brokenLevel, bar_index, brokenLevel, xloc = xloc.bar_index, extend = extend.none, color = structureColor, style = line.style_dashed, width = 1)
+        structureLabel := label.new(bar_index, structureTextY, structureText, xloc = xloc.bar_index, style = label.style_none, textcolor = structureColor, size = size.tiny)
+
+if newSetup
+    if not na(entryLine)
+        line.delete(entryLine)
+    if not na(stopLine)
+        line.delete(stopLine)
+    if not na(tp1Line)
+        line.delete(tp1Line)
+    if not na(tp2Line)
+        line.delete(tp2Line)
+    if not na(entryLabel)
+        label.delete(entryLabel)
+    if not na(stopLabel)
+        label.delete(stopLabel)
+    if not na(tp1Label)
+        label.delete(tp1Label)
+    if not na(tp2Label)
+        label.delete(tp2Label)
+
+    activeEntry = bullSetup ? bullEntry : bearEntry
+    activeStop = bullSetup ? bullStop : bearStop
+    activeRisk = bullSetup ? bullRisk : bearRisk
+    activeTp1 = bullSetup ? activeEntry + activeRisk * 1.5 : activeEntry - activeRisk * 1.5
+    activeTp2 = bullSetup ? activeEntry + activeRisk * 2.0 : activeEntry - activeRisk * 2.0
+    levelEndBar = bar_index + levelDisplayBars
+
+    if showTradeLevels
+        entryLine := line.new(bar_index, activeEntry, levelEndBar, activeEntry, xloc = xloc.bar_index, extend = extend.none, color = entryColor, width = 2)
+        stopLine := line.new(bar_index, activeStop, levelEndBar, activeStop, xloc = xloc.bar_index, extend = extend.none, color = stopColor, width = 2)
+        tp1Line := line.new(bar_index, activeTp1, levelEndBar, activeTp1, xloc = xloc.bar_index, extend = extend.none, color = tp1Color, width = 2)
+        tp2Line := line.new(bar_index, activeTp2, levelEndBar, activeTp2, xloc = xloc.bar_index, extend = extend.none, color = tp2Color, width = 2)
+
+    if showLevelLabels
+        entryLabel := label.new(levelEndBar, activeEntry, "Entry", xloc = xloc.bar_index, style = label.style_none, textcolor = entryColor, size = size.tiny)
+        stopLabel := label.new(levelEndBar, activeStop, "SL", xloc = xloc.bar_index, style = label.style_none, textcolor = stopColor, size = size.tiny)
+        tp1Label := label.new(levelEndBar, activeTp1, "TP1 1:1.5", xloc = xloc.bar_index, style = label.style_none, textcolor = tp1Color, size = size.tiny)
+        tp2Label := label.new(levelEndBar, activeTp2, "TP2 1:2", xloc = xloc.bar_index, style = label.style_none, textcolor = tp2Color, size = size.tiny)
